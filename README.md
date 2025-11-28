@@ -176,20 +176,20 @@ The server automatically generates the following types of tools:
 └─────────────────────────────────────────────────┘
 ```
 
-## 🤝 Contributing
+##  Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## 📝 License
+##  License
 
 This project is licensed under the MIT License.
 
-## 🙏 Acknowledgments
+##  Acknowledgments
 
 - Built on the [Model Context Protocol](https://modelcontextprotocol.io/)
 - Inspired by the need for dynamic, schema-driven API integration
 
-## 🔍 Troubleshooting
+##  Troubleshooting
 
 ### Schema Not Loading
 Check endpoint URL, access token, and network connectivity
@@ -210,4 +210,4 @@ Verify schema loaded successfully, check logs
 
 ---
 
-**Built with ❤️ for the MCP community**
+
