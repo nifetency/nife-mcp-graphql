@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ ./src/
 
 # Set Python path
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app/src
 
 # Environment variables with defaults
 ENV GRAPHQL_ENDPOINT=""
