@@ -48,6 +48,7 @@ class GraphQLMCPServer:
         self.port = int(os.environ.get('MCP_SERVER_PORT', 8080))
         self.host = os.environ.get('MCP_SERVER_HOST', '0.0.0.0')
         self.enable_http = os.environ.get('ENABLE_HTTP_ENDPOINT', 'true').lower() == 'true'
+        self.server_mode = os.environ.get('MCP_SERVER_MODE', 'mcp').lower()
         self.app = None
         self.runner = None
         
