@@ -683,6 +683,24 @@ class GraphQLMCPServer:
         if self.enable_http:
             await self.setup_http_server()
         
+        # In a non-interactive deployment (like Kubernetes), we should not block on stdin.
+        # Instead, we'll wait indefinitely to keep the HTTP server running.
+        if not sys.stdin.isatty():
+            logger.info("Non-interactive mode detected. Server will run indefinitely without listening to stdin.")
+            self._start_time = asyncio.get_event_loop().time()
+            await asyncio.Event().wait()
+        else:
+            await self._run_stdin_loop()
+
+        # Cleanup HTTP server
+        if self.runner:
+            await self.runner.cleanup()
+            logger.info("HTTP server stopped")
+        
+        logger.info("GraphQL MCP Server stopped")
+
+    async def _run_stdin_loop(self):
+        """Listen for JSON-RPC requests on stdin."""
         logger.info("Waiting for MCP client connection via stdin/stdout")
         self._start_time = asyncio.get_event_loop().time()
         
@@ -728,104 +746,10 @@ class GraphQLMCPServer:
             except Exception as e:
                 logger.error(f"Unexpected error: {e}", exc_info=True)
                 break
-        
-        # Cleanup HTTP server
-        if self.runner:
-            await self.runner.cleanup()
-            logger.info("HTTP server stopped")
-        
-        logger.info("GraphQL MCP Server stopped")
-
-async def start_http_server(server: GraphQLMCPServer):
-    """Start aiohttp HTTP server if enabled"""
-    if not server.enable_http:
-        logger.info("HTTP endpoint disabled")
-        return
-
-    app = web.Application()
-
-    # Health endpoint
-    async def health(request):
-        return web.json_response(server._handle_health_check({}))
-
-    # Metrics endpoint
-    async def metrics(request):
-        return web.json_response({
-            "uptime_seconds": asyncio.get_event_loop().time() - getattr(server, "_start_time", 0),
-            "tools_count": len(server.tools),
-            "queries_count": len(server.schema_manager.queries_cache),
-            "mutations_count": len(server.schema_manager.mutations_cache),
-            "ready": server.ready
-        })
-
-    # Tools list endpoint
-    async def tools(request):
-        return web.json_response([
-            {
-                "name": t["name"],
-                "description": t["description"]
-            }
-            for t in server.tools.values()
-        ])
-
-    app.router.add_get("/health", health)
-    app.router.add_get("/metrics", metrics)
-    app.router.add_get("/tools", tools)
-
-    server.app = app
-    server.runner = web.AppRunner(app)
-    await server.runner.setup()
-    site = web.TCPSite(server.runner, host=server.host, port=server.port)
-    await site.start()
-
-    logger.info(f"HTTP server running at http://{server.host}:{server.port}")
-
-async def start_mcp_listener(server: GraphQLMCPServer):
-    """Listen to JSON-RPC requests from stdin (MCP client)"""
-    logger.info("MCP listener started — waiting for client...")
-
-    reader = asyncio.StreamReader()
-    protocol = asyncio.StreamReaderProtocol(reader)
-    await asyncio.get_running_loop().connect_read_pipe(lambda: protocol, sys.stdin)
-
-    while True:
-        try:
-            line = await reader.readline()
-            if not line:
-                logger.info("🟡 MCP client disconnected — continuing HTTP server")
-                break
-
-            line = line.decode().strip()
-            if not line:
-                continue
-
-            request = json.loads(line)
-            response = await server.handle_request(request)
-
-            if response:
-                sys.stdout.write(json.dumps(response) + "\n")
-                sys.stdout.flush()
-
-        except Exception as e:
-            logger.error(f"MCP listener error: {e}", exc_info=True)
-            break
-
-
-
-async def main():
-    server = GraphQLMCPServer()
-    await server.initialize()
-    server._start_time = asyncio.get_event_loop().time()
-
-    # Start HTTP server
-    asyncio.create_task(start_http_server(server))
-
-    # Start MCP listener
-    asyncio.create_task(start_mcp_listener(server))
-
-    # Keep process alive
-    await asyncio.Event().wait()
-
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    server = GraphQLMCPServer()
+    try:
+        asyncio.run(server.run())
+    except KeyboardInterrupt:
+        logger.info("Server shutdown requested.")
