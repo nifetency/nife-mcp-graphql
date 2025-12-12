@@ -10,6 +10,7 @@ import asyncio
 import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
+from aiohttp import web
 
 # Configure logging
 logging.basicConfig(
@@ -33,17 +34,28 @@ class GraphQLMCPServer:
     - Zero hardcoded queries
     - Always up-to-date with API
     - Self-documenting
+    - Optional HTTP endpoint for health checks and metrics
     """
     
     def __init__(self):
         self.schema_manager = SchemaManager()
         self.tools: Dict[str, Dict] = {}
         self.ready = False
+        self.port = int(os.environ.get('MCP_SERVER_PORT', 8080))
+        self.host = os.environ.get('MCP_SERVER_HOST', '0.0.0.0')
+        self.enable_http = os.environ.get('ENABLE_HTTP_ENDPOINT', 'true').lower() == 'true'
+        self.app = None
+        self.runner = None
         
     async def initialize(self) -> bool:
         """Initialize server by loading schema and generating tools"""
         logger.info("="*60)
         logger.info("Intelligent GraphQL MCP Server - Initializing")
+        logger.info(f"Server Configuration:")
+        logger.info(f"  - HTTP Endpoint: {'Enabled' if self.enable_http else 'Disabled'}")
+        if self.enable_http:
+            logger.info(f"  - Host: {self.host}")
+            logger.info(f"  - Port: {self.port}")
         logger.info("="*60)
         
         # Get configuration
@@ -571,10 +583,100 @@ class GraphQLMCPServer:
                 }
             }
     
+    async def setup_http_server(self):
+        """Setup optional HTTP server for health checks and metrics"""
+        if not self.enable_http:
+            return
+        
+        self.app = web.Application()
+        
+        # Health check endpoint
+        async def health_handler(request):
+            health_data = self._handle_health_check({})
+            return web.json_response(health_data)
+        
+        # Metrics endpoint
+        async def metrics_handler(request):
+            metrics = {
+                "server": "graphql-mcp-server",
+                "version": "1.0.0",
+                "uptime_seconds": asyncio.get_event_loop().time() - getattr(self, '_start_time', 0),
+                "schema_loaded": self.schema_manager.schema_loaded,
+                "tools_count": len(self.tools),
+                "queries_count": len(self.schema_manager.queries_cache),
+                "mutations_count": len(self.schema_manager.mutations_cache),
+                "ready": self.ready,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            return web.json_response(metrics)
+        
+        # Schema info endpoint
+        async def schema_handler(request):
+            schema_info = self._handle_schema_info({})
+            return web.json_response(schema_info)
+        
+        # Tools list endpoint
+        async def tools_handler(request):
+            tools_list = [
+                {
+                    "name": tool["name"],
+                    "description": tool["description"],
+                    "type": "query" if tool["name"].startswith("query_") else 
+                            "mutation" if tool["name"].startswith("mutation_") else "utility"
+                }
+                for tool in self.tools.values()
+            ]
+            return web.json_response({
+                "tools": tools_list,
+                "total_count": len(tools_list)
+            })
+        
+        # Root endpoint
+        async def root_handler(request):
+            return web.json_response({
+                "server": "graphql-mcp-server",
+                "version": "1.0.0",
+                "status": "running",
+                "mode": "stdio",
+                "endpoints": {
+                    "health": "/health",
+                    "metrics": "/metrics",
+                    "schema": "/schema",
+                    "tools": "/tools"
+                }
+            })
+        
+        # Register routes
+        self.app.router.add_get('/', root_handler)
+        self.app.router.add_get('/health', health_handler)
+        self.app.router.add_get('/metrics', metrics_handler)
+        self.app.router.add_get('/schema', schema_handler)
+        self.app.router.add_get('/tools', tools_handler)
+        
+        # Start HTTP server
+        self.runner = web.AppRunner(self.app)
+        await self.runner.setup()
+        site = web.TCPSite(self.runner, self.host, self.port)
+        await site.start()
+        
+        logger.info("="*60)
+        logger.info(f"✓ HTTP Server started on http://{self.host}:{self.port}")
+        logger.info(f"  - Health: http://{self.host}:{self.port}/health")
+        logger.info(f"  - Metrics: http://{self.host}:{self.port}/metrics")
+        logger.info(f"  - Schema: http://{self.host}:{self.port}/schema")
+        logger.info(f"  - Tools: http://{self.host}:{self.port}/tools")
+        logger.info("="*60)
+    
     async def run(self):
         """Main MCP server loop"""
         logger.info("Starting GraphQL MCP Server...")
+        
+        # Setup HTTP server if enabled
+        if self.enable_http:
+            await self.setup_http_server()
+        
         logger.info("Waiting for MCP client connection via stdin/stdout")
+        self._start_time = asyncio.get_event_loop().time()
         
         while True:
             try:
@@ -618,6 +720,11 @@ class GraphQLMCPServer:
             except Exception as e:
                 logger.error(f"Unexpected error: {e}", exc_info=True)
                 break
+        
+        # Cleanup HTTP server
+        if self.runner:
+            await self.runner.cleanup()
+            logger.info("HTTP server stopped")
         
         logger.info("GraphQL MCP Server stopped")
 
