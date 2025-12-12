@@ -23,13 +23,19 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ ./src/
 
 # Set Python path
-ENV PYTHONPATH=/app/src
+ENV PYTHONPATH=/app:/app/src
 
 # Environment variables with defaults
 ENV GRAPHQL_ENDPOINT=""
 ENV API_ACCESS_TOKEN=""
 ENV LOG_LEVEL="INFO"
 ENV PYTHONUNBUFFERED=1
+ENV MCP_SERVER_PORT=8080
+ENV MCP_SERVER_HOST=0.0.0.0
+ENV ENABLE_HTTP_ENDPOINT=true
+
+# Expose the port
+EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

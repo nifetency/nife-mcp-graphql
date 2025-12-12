@@ -3,6 +3,11 @@
 Main entry point for GraphQL MCP Server
 """
 import asyncio
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 from graphql_mcp_server.server import GraphQLMCPServer
 
 async def main():
