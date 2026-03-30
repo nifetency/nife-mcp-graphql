@@ -692,32 +692,7 @@ class GraphQLMCPServer:
 
         else:
             raise ValueError(f"Invalid MCP_MODE: {self.mode}")
-            """Main MCP server loop"""
-            logger.info("Starting GraphQL MCP Server...")
-            
-            # Initialize schema immediately on startup
-            logger.info("Initializing server and loading schema...")
-            await self.initialize()
-            
-            # Setup HTTP server if enabled
-            if self.enable_http:
-                await self.setup_http_server()
-            
-            # In a non-interactive deployment (like Kubernetes), we should not block on stdin.
-            # Instead, we'll wait indefinitely to keep the HTTP server running.
-            if not sys.stdin.isatty():
-                logger.info("Non-interactive mode detected. Server will run indefinitely without listening to stdin.")
-                self._start_time = asyncio.get_event_loop().time()
-                await asyncio.Event().wait()
-            else:
-                await self._run_stdin_loop()
-
-            # Cleanup HTTP server
-            if self.runner:
-                await self.runner.cleanup()
-                logger.info("HTTP server stopped")
-            
-            logger.info("GraphQL MCP Server stopped")
+        logger.info("GraphQL MCP Server stopped")
 
     async def _run_stdin_loop(self):
         """Listen for JSON-RPC requests on stdin."""
