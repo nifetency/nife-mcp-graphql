@@ -4,153 +4,84 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![MCP](https://img.shields.io/badge/MCP-compatible-purple)
 
-A dynamic Model Context Protocol (MCP) server that automatically discovers and generates tools from any GraphQL API schema. This server enables seamless integration between Large Language Models and GraphQL APIs using either MCP (stdio) or HTTP deployment modes.
-
----
-
-## Overview
-
-GraphQL MCP Server is a schema-driven integration tool that automatically introspects GraphQL APIs and exposes their capabilities as MCP tools. This approach eliminates the need for manual tool configuration and ensures that your integration stays synchronized with API changes.
-
----
-
-## Operating Modes
-
-The server supports two execution modes depending on your use case:
-
-### 🔹 MCP Mode (`stdio`)
-- Used for Claude Desktop, Cursor, and MCP clients
-- Communicates via stdin/stdout
-- No HTTP server started
-- Default mode
-
-```
-MCP_MODE=stdio
-ENABLE_HTTP_ENDPOINT=false
-```
-
----
-
-### 🔹 HTTP Mode (`http`)
-- Used for Docker, Kubernetes, or standalone deployments
-- Starts HTTP server with health + metrics endpoints
-- Runs indefinitely
-
-```
-MCP_MODE=http
-ENABLE_HTTP_ENDPOINT=true
-```
-
----
-
-## Key Features
-
-### Automatic Discovery
-- Introspects GraphQL schemas and generates MCP tools dynamically
-- Automatically adapts to schema changes
-- Zero manual configuration for queries and mutations
-
-### Production Ready
-- Docker and Docker Compose support
-- Kubernetes compatible
-- AWS ECS and Google Cloud Run ready
-- Built-in health checks and monitoring endpoints
-
-### Flexible Architecture
-- Dual-mode support (MCP + HTTP)
-- Configurable ports and host
-- Schema caching with TTL
-- Supports authenticated and public APIs
-
-### Developer Experience
-- Self-documenting schema exploration
-- Type-safe query validation
-- Multiple field selection modes (auto, all, custom)
-- Strong logging and error handling
-
----
-
-## Prerequisites
-
-- Python 3.11+
-- Docker (optional)
-- GraphQL endpoint
-- API token (if required)
+A dynamic Model Context Protocol (MCP) server that automatically discovers and generates tools from any GraphQL API schema. Point it at any GraphQL endpoint and it instantly exposes every query and mutation as an MCP tool — zero manual configuration.
 
 ---
 
 ## Installation
 
-### Local Development
-
-```
-git clone https://github.com/nifetency/nife-mcp-graphql
-cd graphql-mcp-server
-
-pip install -r requirements.txt
-
-cp .env.example .env
-# Edit .env
-
-python -m graphql_mcp_server
-```
-
----
-
-### Docker
-
-```
-docker build -t graphql-mcp-server .
-docker run -it -p 8080:8080 --env-file .env graphql-mcp-server
-```
-
----
-
-### Docker (direct env)
-
-```
-docker run -it -p 8080:8080 \
-  -e GRAPHQL_ENDPOINT=https://api.example.com/graphql \
-  -e API_ACCESS_TOKEN=your_token \
-  -e MCP_MODE=http \
-  -e ENABLE_HTTP_ENDPOINT=true \
-  graphql-mcp-server
+```bash
+pip install graphql-mcp-server
 ```
 
 ---
 
 ## Configuration
 
-### Environment Variables
+There are **four ways** to configure the server. They are applied in priority order — higher entries win:
+
+| Priority | Method | Best for |
+|----------|--------|----------|
+| 1  | CLI arguments | One-off runs, testing |
+| 2 | Environment variables | Docker, CI/CD, shell scripts |
+| 3 | `.env` file | Local development |
+| 4  | Defaults | Nothing required by default |
+
+### Method 1 — CLI Arguments
+
+```bash
+graphql-mcp-server --endpoint https://api.example.com/graphql --token mytoken
+```
+
+All available flags:
 
 ```
+--endpoint URL       GraphQL API endpoint (required if not set via env)
+--token TOKEN        API access token for authentication
+--mode stdio|http    Server mode (default: stdio)
+--port PORT          HTTP port, only used in http mode (default: 8080)
+--host HOST          HTTP host, only used in http mode (default: 0.0.0.0)
+--log-level LEVEL    Logging level: DEBUG, INFO, WARNING, ERROR (default: INFO)
+--env-file PATH      Path to a custom .env file
+--version            Show version and exit
+```
+
+### Method 2 — Environment Variables
+
+```bash
+export GRAPHQL_ENDPOINT=https://api.example.com/graphql
+export API_ACCESS_TOKEN=your_token_here
+export MCP_MODE=stdio
+
+graphql-mcp-server
+```
+
+### Method 3 — `.env` File
+
+Create a `.env` file in your working directory:
+
+```env
 GRAPHQL_ENDPOINT=https://api.example.com/graphql
 API_ACCESS_TOKEN=your_token_here
-
 MCP_MODE=stdio
-
 LOG_LEVEL=INFO
-QUERY_TIMEOUT=30
-SCHEMA_CACHE_TTL=3600
-
-ENABLE_HTTP_ENDPOINT=true
-MCP_SERVER_PORT=8080
-MCP_SERVER_HOST=0.0.0.0
 ```
 
----
+Then just run:
 
-## Integration
-
-### Claude Desktop (Repo-based)
-
+```bash
+graphql-mcp-server
 ```
+
+### Method 4 — Claude Desktop Config (most common for MCP use)
+
+No `.env` file needed. Pass everything via the `env` block in `claude_desktop_config.json`:
+
+```json
 {
   "mcpServers": {
     "graphql": {
-      "command": "python",
-      "args": ["-m", "graphql_mcp_server"],
-      "cwd": "/absolute/path/to/graphql-mcp-server",
+      "command": "graphql-mcp-server",
       "env": {
         "GRAPHQL_ENDPOINT": "https://api.example.com/graphql",
         "API_ACCESS_TOKEN": "your_token_here",
@@ -162,33 +93,106 @@ MCP_SERVER_HOST=0.0.0.0
 }
 ```
 
+Claude Desktop injects the `env` block values directly into the process — this is the standard MCP pattern.
+
+---
+
+## Environment Variable Reference
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GRAPHQL_ENDPOINT` |  Yes | — | GraphQL API URL |
+| `API_ACCESS_TOKEN` | No | — | Bearer token for auth |
+| `MCP_MODE` | No | `stdio` | `stdio` or `http` |
+| `ENABLE_HTTP_ENDPOINT` | No | `true` | Enable HTTP health/metrics endpoints |
+| `MCP_SERVER_PORT` | No | `8080` | HTTP server port |
+| `MCP_SERVER_HOST` | No | `0.0.0.0` | HTTP server host |
+| `LOG_LEVEL` | No | `INFO` | Logging verbosity |
+| `QUERY_TIMEOUT` | No | `30` | Request timeout in seconds |
+| `SCHEMA_CACHE_TTL` | No | `3600` | Schema cache TTL in seconds |
+
+---
+
+## Operating Modes
+
+### MCP Mode (`stdio`) — for Claude Desktop, Cursor, MCP clients
+
+```bash
+graphql-mcp-server --endpoint https://api.example.com/graphql --mode stdio
+```
+
+Communicates via stdin/stdout. No HTTP server is started. This is the default.
+
+### HTTP Mode — for Docker, Kubernetes, server deployments
+
+```bash
+graphql-mcp-server --endpoint https://api.example.com/graphql --mode http --port 8080
+```
+
+Starts an HTTP server with health and metrics endpoints:
+- `GET /health` — health check
+- `GET /metrics` — server metrics
+- `GET /schema` — schema summary
+- `GET /tools` — all generated tools
+
+---
+
+## Docker
+
+```bash
+docker build -t graphql-mcp-server .
+
+docker run -p 8080:8080 \
+  -e GRAPHQL_ENDPOINT=https://api.example.com/graphql \
+  -e API_ACCESS_TOKEN=your_token \
+  -e MCP_MODE=http \
+  graphql-mcp-server
+```
+
+Or with Docker Compose:
+
+```bash
+cp .env.example .env   # fill in your values
+docker-compose up
+```
+
+---
+
+## Key Features
+
+- **Zero config queries** — auto-introspects any GraphQL schema and generates MCP tools
+- **Dual mode** — stdio for MCP clients, HTTP for server deployments
+- **Flexible config** — CLI args, env vars, .env file, or Claude Desktop env block
+- **Production ready** — Docker, Kubernetes, AWS ECS, Google Cloud Run compatible
+- **Self-documenting** — `list_available_queries`, `get_schema_info`, `get_query_signature` tools built in
+
 ---
 
 ## Troubleshooting
 
-### Port already in use
+**`[ERROR] GraphQL endpoint not configured`**
 
-```
-OSError: address already in use
+Set `GRAPHQL_ENDPOINT` via any method above. The most common fix:
+```bash
+graphql-mcp-server --endpoint https://your-api.com/graphql
 ```
 
-Fix:
-- Change port
-- Stop existing process
-- Use MCP_MODE=stdio
+**Port already in use**
+
+Change the port:
+```bash
+graphql-mcp-server --mode http --port 9090
+```
+
+**Docker container exits immediately**
+
+Make sure you're using HTTP mode:
+```bash
+docker run -e MCP_MODE=http -e GRAPHQL_ENDPOINT=... graphql-mcp-server
+```
 
 ---
 
-### Docker exits immediately
 
-Fix:
-```
-MCP_MODE=http
-ENABLE_HTTP_ENDPOINT=true
-```
 
----
 
-## License
-
-MIT

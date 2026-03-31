@@ -66,6 +66,8 @@ class GraphQLMCPServer:
         # Get configuration
         graphql_endpoint = os.environ.get('GRAPHQL_ENDPOINT')
         access_token = os.environ.get('API_ACCESS_TOKEN')
+        print(f"✓ GraphQL Endpoint: {graphql_endpoint if graphql_endpoint else 'Not configured'}")
+        print(f"✓ Access Token: {"Found" if access_token else 'Not found'}")
         
         if not graphql_endpoint:
             logger.error("✗ GRAPHQL_ENDPOINT not configured")

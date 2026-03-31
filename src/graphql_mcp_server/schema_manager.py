@@ -127,17 +127,37 @@ class SchemaManager:
             )
             
             if response.status_code != 200:
-                logger.error(f"HTTP {response.status_code}: {response.text}")
+                logger.error(f"HTTP {response.status_code}: {response.text[:500]}")
                 return False
             
             data = response.json()
-            
+
             if 'errors' in data:
                 logger.error(f"GraphQL errors: {data['errors']}")
                 return False
-            
+
+            # Guard: data['data'] can be None when the endpoint URL is wrong
+            # (e.g. missing /graphql path), the API returned an auth error without
+            # a top-level 'errors' key, or the response body is not a GraphQL response.
+            if not data.get('data'):
+                logger.error(
+                    f"Introspection response has no 'data' field. "
+                    f"Check that GRAPHQL_ENDPOINT includes the full path "
+                    f"(e.g. https://api.example.com/graphql). "
+                    f"Raw response: {data}"
+                )
+                return False
+
+            schema_data = data['data'].get('__schema')
+            if not schema_data:
+                logger.error(
+                    f"Introspection response is missing '__schema'. "
+                    f"Keys returned in data: {list(data['data'].keys())}"
+                )
+                return False
+
             # Store schema
-            self.schema = data['data']['__schema']
+            self.schema = schema_data
             
             # Build caches
             self._build_caches()
@@ -152,7 +172,7 @@ class SchemaManager:
             return True
             
         except Exception as e:
-            logger.error(f"Schema loading failed: {e}")
+            logger.error(f"Schema loading failed: {e}", exc_info=True)
             return False
     
     def _build_caches(self):
@@ -161,27 +181,41 @@ class SchemaManager:
             return
         
         # Build types cache
-        for type_def in self.schema['types']:
-            type_name = type_def['name']
-            self.types_cache[type_name] = type_def
+        for type_def in self.schema.get('types', []):
+            type_name = type_def.get('name')
+            if type_name:
+                self.types_cache[type_name] = type_def
         
-        # Find query and mutation root types
-        query_type = self.schema.get('queryType', {}).get('name')
-        mutation_type = self.schema.get('mutationType', {}).get('name')
-        
+        # Find query and mutation root types.
+        # NOTE: queryType / mutationType are returned as objects OR as null by the
+        # API — using `or {}` handles both the missing-key case and the null case.
+        query_type_obj = self.schema.get('queryType') or {}
+        mutation_type_obj = self.schema.get('mutationType') or {}
+
+        query_type = query_type_obj.get('name')
+        mutation_type = mutation_type_obj.get('name')
+
+        if query_type:
+            logger.info(f"  - Query root type: {query_type}")
+        else:
+            logger.warning("  - No query root type found in schema")
+
+        if mutation_type:
+            logger.info(f"  - Mutation root type: {mutation_type}")
+        else:
+            logger.info("  - No mutation root type (API is query-only)")
+
         # Build queries cache
         if query_type and query_type in self.types_cache:
             query_def = self.types_cache[query_type]
-            if query_def.get('fields'):
-                for field in query_def['fields']:
-                    self.queries_cache[field['name']] = field
+            for field in query_def.get('fields') or []:
+                self.queries_cache[field['name']] = field
         
         # Build mutations cache
         if mutation_type and mutation_type in self.types_cache:
             mutation_def = self.types_cache[mutation_type]
-            if mutation_def.get('fields'):
-                for field in mutation_def['fields']:
-                    self.mutations_cache[field['name']] = field
+            for field in mutation_def.get('fields') or []:
+                self.mutations_cache[field['name']] = field
     
     def get_available_queries(self) -> List[Dict]:
         """Get list of all available queries"""
@@ -214,7 +248,7 @@ class SchemaManager:
             return []
         
         type_def = self.types_cache[type_name]
-        fields = type_def.get('fields', [])
+        fields = type_def.get('fields') or []
         
         if not include_nested:
             # Only return scalar fields
@@ -333,7 +367,7 @@ class SchemaManager:
             return '\n'.join(fields)
         
         type_def = self.types_cache[parent_type]
-        type_fields = {f['name']: f for f in type_def.get('fields', [])}
+        type_fields = {f['name']: f for f in type_def.get('fields') or []}
         
         result = []
         for field_name in fields:
