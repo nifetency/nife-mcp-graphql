@@ -8,6 +8,14 @@ A dynamic Model Context Protocol (MCP) server that automatically discovers and g
 
 ---
 
+## Documentation
+
+For full documentation, guides, and examples, visit:
+
+https://nife.io/mcp_opensource
+
+--- 
+
 ## Installation
 
 ```bash
@@ -165,7 +173,7 @@ docker-compose up
 - **Flexible config** — CLI args, env vars, .env file, or Claude Desktop env block
 - **Production ready** — Docker, Kubernetes, AWS ECS, Google Cloud Run compatible
 - **Self-documenting** — `list_available_queries`, `get_schema_info`, `get_query_signature` tools built in
-
+- **Documentation** — https://nife.io/mcp_opensource
 ---
 
 ## Troubleshooting
